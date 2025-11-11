@@ -512,9 +512,7 @@ RULES:
   }
 }
 
-// TEMPORARY: Removed authenticateUser middleware for testing
-// TODO: Re-enable authentication once OAuth is implemented in extension
-app.post("/analyze", async (req, res) => {
+app.post("/analyze", authenticateUser, async (req, res) => {
   const { ticker, isCrypto } = req.body;
   if (!ticker) return res.status(400).json({ error: "Missing ticker" });
 
