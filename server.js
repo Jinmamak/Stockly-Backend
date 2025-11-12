@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 3001;
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
 const NEWS_KEY = process.env.NEWS_API_KEY;
 const PRICE_KEY = process.env.ALPHA_VANTAGE_KEY;
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
 // ==========================================
@@ -148,18 +149,6 @@ async function authenticateUser(req, res, next) {
     res.status(500).json({ error: 'Authentication failed' });
   }
 }
-
-// Utility: Calculate technical indicators
-const calculateTechnicalSignals = (priceData, changePct) => {
-  const signals = [];
-  const pct = parseFloat(changePct);
-  
-  if (Math.abs(pct) > 5) signals.push({ type: 'momentum', text: 'High volatility day', color: '#f59e0b' });
-  if (pct > 3) signals.push({ type: 'bullish', text: 'Strong upward momentum', color: '#10b981' });
-  if (pct < -3) signals.push({ type: 'bearish', text: 'Downward pressure', color: '#ef4444' });
-  
-  return signals;
-};
 
 // Utility: Analyze news sentiment
 const analyzeNewsSentiment = (news, ticker) => {
@@ -524,22 +513,121 @@ app.post("/analyze", authenticateUser, async (req, res) => {
       return await handleCryptoAnalysis(ticker, res);
     }
     
-    let price = null, change = null, changePct = null, volume = null, high = null, low = null;
-    
+    // Fetch comprehensive company fundamentals from Alpha Vantage
+    let fundamentals = {
+      marketCap: null,
+      peRatio: null,
+      week52High: null,
+      week52Low: null,
+      beta: null,
+      dividendYield: null,
+      eps: null,
+      profitMargin: null,
+      bookValue: null
+    };
+
+    let performance = {
+      day: null,
+      week: null,
+      month: null,
+      threeMonth: null,
+      ytd: null,
+      year: null
+    };
+
     if (PRICE_KEY) {
       try {
-        const r = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${PRICE_KEY}`);
-        const d = await r.json();
-        if (d['Global Quote']?.['05. price']) {
-          price = parseFloat(d['Global Quote']['05. price']).toFixed(2);
-          change = parseFloat(d['Global Quote']['09. change']).toFixed(2);
-          changePct = parseFloat(d['Global Quote']['10. change percent'].replace('%', '')).toFixed(2);
-          volume = parseInt(d['Global Quote']['06. volume']).toLocaleString();
-          high = parseFloat(d['Global Quote']['03. high']).toFixed(2);
-          low = parseFloat(d['Global Quote']['04. low']).toFixed(2);
+        // Get company overview with fundamentals
+        const overviewRes = await fetch(`https://www.alphavantage.co/query?function=OVERVIEW&symbol=${ticker}&apikey=${PRICE_KEY}`);
+        const overview = await overviewRes.json();
+
+        if (overview && overview.Symbol) {
+          fundamentals.marketCap = overview.MarketCapitalization ? (parseFloat(overview.MarketCapitalization) / 1e9).toFixed(2) : null;
+          fundamentals.peRatio = overview.PERatio ? parseFloat(overview.PERatio).toFixed(2) : null;
+          fundamentals.week52High = overview['52WeekHigh'] ? parseFloat(overview['52WeekHigh']).toFixed(2) : null;
+          fundamentals.week52Low = overview['52WeekLow'] ? parseFloat(overview['52WeekLow']).toFixed(2) : null;
+          fundamentals.beta = overview.Beta ? parseFloat(overview.Beta).toFixed(2) : null;
+          fundamentals.dividendYield = overview.DividendYield ? (parseFloat(overview.DividendYield) * 100).toFixed(2) : null;
+          fundamentals.eps = overview.EPS ? parseFloat(overview.EPS).toFixed(2) : null;
+          fundamentals.profitMargin = overview.ProfitMargin ? (parseFloat(overview.ProfitMargin) * 100).toFixed(2) : null;
+          fundamentals.bookValue = overview.BookValue ? parseFloat(overview.BookValue).toFixed(2) : null;
+        }
+
+        // Get daily time series for performance calculation
+        const timeSeriesRes = await fetch(`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=full&apikey=${PRICE_KEY}`);
+        const timeSeries = await timeSeriesRes.json();
+
+        if (timeSeries['Time Series (Daily)']) {
+          const dates = Object.keys(timeSeries['Time Series (Daily)']).sort().reverse();
+          const currentPrice = parseFloat(timeSeries['Time Series (Daily)'][dates[0]]['4. close']);
+
+          const getPrice = (daysAgo) => {
+            if (dates[daysAgo]) {
+              return parseFloat(timeSeries['Time Series (Daily)'][dates[daysAgo]]['4. close']);
+            }
+            return null;
+          };
+
+          const calcReturn = (oldPrice) => {
+            if (oldPrice) return (((currentPrice - oldPrice) / oldPrice) * 100).toFixed(2);
+            return null;
+          };
+
+          performance.day = getPrice(1) ? calcReturn(getPrice(1)) : null;
+          performance.week = getPrice(5) ? calcReturn(getPrice(5)) : null;
+          performance.month = getPrice(21) ? calcReturn(getPrice(21)) : null;
+          performance.threeMonth = getPrice(63) ? calcReturn(getPrice(63)) : null;
+
+          // Calculate YTD
+          const currentYear = new Date().getFullYear();
+          const ytdStart = dates.find(d => d.startsWith(currentYear.toString()));
+          if (ytdStart) {
+            const ytdPrice = parseFloat(timeSeries['Time Series (Daily)'][ytdStart]['4. close']);
+            performance.ytd = calcReturn(ytdPrice);
+          }
+
+          // Calculate 1 year
+          performance.year = getPrice(252) ? calcReturn(getPrice(252)) : null;
         }
       } catch (e) {
-        console.error("Price fetch error:", e.message);
+        console.error("Fundamentals fetch error:", e.message);
+      }
+    }
+
+    // Fetch analyst recommendations from Finnhub
+    let analystData = {
+      buy: 0,
+      hold: 0,
+      sell: 0,
+      targetLow: null,
+      targetMean: null,
+      targetHigh: null
+    };
+
+    if (FINNHUB_KEY) {
+      try {
+        // Get recommendation trends
+        const recRes = await fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${ticker}&token=${FINNHUB_KEY}`);
+        const recommendations = await recRes.json();
+
+        if (recommendations && recommendations.length > 0) {
+          const latest = recommendations[0];
+          analystData.buy = (latest.strongBuy || 0) + (latest.buy || 0);
+          analystData.hold = latest.hold || 0;
+          analystData.sell = (latest.strongSell || 0) + (latest.sell || 0);
+        }
+
+        // Get price targets
+        const targetRes = await fetch(`https://finnhub.io/api/v1/stock/price-target?symbol=${ticker}&token=${FINNHUB_KEY}`);
+        const targets = await targetRes.json();
+
+        if (targets && targets.targetMean) {
+          analystData.targetLow = targets.targetLow ? parseFloat(targets.targetLow).toFixed(2) : null;
+          analystData.targetMean = targets.targetMean ? parseFloat(targets.targetMean).toFixed(2) : null;
+          analystData.targetHigh = targets.targetHigh ? parseFloat(targets.targetHigh).toFixed(2) : null;
+        }
+      } catch (e) {
+        console.error("Analyst data fetch error:", e.message);
       }
     }
 
@@ -594,41 +682,43 @@ app.post("/analyze", authenticateUser, async (req, res) => {
       }
     }
 
-    const pct = changePct ? parseFloat(changePct) : 0;
-    const technicals = calculateTechnicalSignals({ price, high, low }, pct);
     const sentiment = analyzeNewsSentiment(news, ticker);
-    
+
+    // Calculate interest score based on analyst sentiment and news
     let score = 50;
-    if (pct > 10) score += 20;
-    else if (pct > 5) score += 15;
-    else if (pct > 2) score += 10;
-    else if (pct > 0) score += 5;
-    else if (pct > -2) score -= 5;
-    else if (pct > -5) score -= 10;
-    else if (pct > -10) score -= 15;
-    else score -= 20;
-    
+
+    const totalAnalysts = analystData.buy + analystData.hold + analystData.sell;
+    if (totalAnalysts > 0) {
+      const buyRatio = analystData.buy / totalAnalysts;
+      if (buyRatio > 0.7) score += 20;
+      else if (buyRatio > 0.5) score += 10;
+      else if (buyRatio < 0.2) score -= 15;
+      else if (buyRatio < 0.3) score -= 10;
+    }
+
     if (news.length >= 3) score += 15;
     else if (news.length >= 2) score += 10;
     else if (news.length >= 1) score += 5;
-    
+
     score += (sentiment.score - 50) / 5;
     score = Math.max(0, Math.min(100, Math.round(score)));
 
     const prompt = `You're a financial analyst providing educational market context for ${ticker} stock.
 
-CURRENT MARKET DATA:
-- Price: $${price} (${changePct}% ${change >= 0 ? 'up' : 'down'} today)
-- Day Range: $${low} - $${high}  
-- Volume: ${volume}
+FUNDAMENTAL DATA:
+- Market Cap: $${fundamentals.marketCap}B
+- P/E Ratio: ${fundamentals.peRatio || 'N/A'}
+- 52-Week Range: $${fundamentals.week52Low} - $${fundamentals.week52High}
+- Beta: ${fundamentals.beta || 'N/A'}
+${analystData.buy + analystData.hold + analystData.sell > 0 ? `\nANALYST RATINGS: ${analystData.buy} Buy, ${analystData.hold} Hold, ${analystData.sell} Sell` : ''}
 ${news.length ? `\nRECENT FINANCIAL NEWS:\n${news.map(n => `• ${n.source} (${n.time}h ago): ${n.title}`).join('\n')}` : '\n• Minimal financial news coverage in past 72 hours'}
 
 Write a focused 4-section analysis (90 words). Use EXACT numbered format:
 
 1. MARKET CONTEXT
-Explain TODAY's specific price movement for ${ticker}. What's happening with THIS COMPANY right now?
+Explain what's happening with ${ticker} based on recent news and analyst sentiment.
 
-2. KEY WATCHPOINTS  
+2. KEY WATCHPOINTS
 List 2-3 specific metrics/factors investors track for ${ticker}'s business. Use bullet points (•).
 
 3. RISK CONSIDERATIONS
@@ -667,34 +757,140 @@ RULES:
       </div>
     `;
 
-    const priceCard = price ? `
-      <div style="background:linear-gradient(135deg,rgba(15,15,15,0.95),rgba(25,25,35,0.95));border:1px solid rgba(46,185,224,0.2);border-radius:12px;padding:20px;margin:16px 0;backdrop-filter:blur(10px);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-          <div>
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Latest Price</div>
-            <div style="font-size:32px;font-weight:700;color:#fff;line-height:1;">$${price}</div>
+    // Performance metrics card
+    const performanceCard = (performance.day || performance.week || performance.month) ? `
+      <div style="margin:16px 0;">
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📈 Performance Returns</div>
+        <div style="background:linear-gradient(135deg,rgba(15,15,15,0.95),rgba(25,25,35,0.95));border:1px solid rgba(46,185,224,0.2);border-radius:12px;padding:16px;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">
+            ${performance.day ? `
+              <div style="text-align:center;padding:10px;background:rgba(${parseFloat(performance.day) >= 0 ? '16,185,129' : '239,68,68'},0.1);border-radius:8px;">
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">1 DAY</div>
+                <div style="font-size:16px;font-weight:700;color:${parseFloat(performance.day) >= 0 ? '#10b981' : '#ef4444'};">${parseFloat(performance.day) >= 0 ? '+' : ''}${performance.day}%</div>
+              </div>
+            ` : ''}
+            ${performance.week ? `
+              <div style="text-align:center;padding:10px;background:rgba(${parseFloat(performance.week) >= 0 ? '16,185,129' : '239,68,68'},0.1);border-radius:8px;">
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">1 WEEK</div>
+                <div style="font-size:16px;font-weight:700;color:${parseFloat(performance.week) >= 0 ? '#10b981' : '#ef4444'};">${parseFloat(performance.week) >= 0 ? '+' : ''}${performance.week}%</div>
+              </div>
+            ` : ''}
+            ${performance.month ? `
+              <div style="text-align:center;padding:10px;background:rgba(${parseFloat(performance.month) >= 0 ? '16,185,129' : '239,68,68'},0.1);border-radius:8px;">
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">1 MONTH</div>
+                <div style="font-size:16px;font-weight:700;color:${parseFloat(performance.month) >= 0 ? '#10b981' : '#ef4444'};">${parseFloat(performance.month) >= 0 ? '+' : ''}${performance.month}%</div>
+              </div>
+            ` : ''}
           </div>
-          <div style="text-align:right;">
-            <div style="display:inline-block;padding:6px 12px;background:${change >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'};border:1px solid ${change >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'};border-radius:6px;">
-              <div style="font-size:18px;font-weight:700;color:${change >= 0 ? '#10b981' : '#ef4444'};">${change >= 0 ? '+' : ''}$${change}</div>
-              <div style="font-size:13px;font-weight:600;color:${change >= 0 ? '#10b981' : '#ef4444'};">${change >= 0 ? '+' : ''}${changePct}%</div>
-            </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            ${performance.threeMonth ? `
+              <div style="text-align:center;padding:10px;background:rgba(${parseFloat(performance.threeMonth) >= 0 ? '16,185,129' : '239,68,68'},0.08);border-radius:8px;">
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">3 MONTH</div>
+                <div style="font-size:14px;font-weight:700;color:${parseFloat(performance.threeMonth) >= 0 ? '#10b981' : '#ef4444'};">${parseFloat(performance.threeMonth) >= 0 ? '+' : ''}${performance.threeMonth}%</div>
+              </div>
+            ` : ''}
+            ${performance.ytd ? `
+              <div style="text-align:center;padding:10px;background:rgba(${parseFloat(performance.ytd) >= 0 ? '16,185,129' : '239,68,68'},0.08);border-radius:8px;">
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">YTD</div>
+                <div style="font-size:14px;font-weight:700;color:${parseFloat(performance.ytd) >= 0 ? '#10b981' : '#ef4444'};">${parseFloat(performance.ytd) >= 0 ? '+' : ''}${performance.ytd}%</div>
+              </div>
+            ` : ''}
+            ${performance.year ? `
+              <div style="text-align:center;padding:10px;background:rgba(${parseFloat(performance.year) >= 0 ? '16,185,129' : '239,68,68'},0.08);border-radius:8px;">
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">1 YEAR</div>
+                <div style="font-size:14px;font-weight:700;color:${parseFloat(performance.year) >= 0 ? '#10b981' : '#ef4444'};">${parseFloat(performance.year) >= 0 ? '+' : ''}${performance.year}%</div>
+              </div>
+            ` : ''}
           </div>
         </div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05);">
-          <div>
-            <div style="font-size:10px;color:#666;margin-bottom:4px;">HIGH</div>
-            <div style="font-size:14px;font-weight:600;color:#10b981;">$${high}</div>
+      </div>
+    ` : '';
+
+    // Key metrics card
+    const metricsCard = (fundamentals.marketCap || fundamentals.peRatio || fundamentals.week52High) ? `
+      <div style="margin:16px 0;">
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📊 Key Metrics</div>
+        <div style="background:linear-gradient(135deg,rgba(15,15,15,0.95),rgba(25,25,35,0.95));border:1px solid rgba(102,126,234,0.2);border-radius:12px;padding:16px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            ${fundamentals.marketCap ? `
+              <div>
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">MARKET CAP</div>
+                <div style="font-size:16px;font-weight:700;color:#fff;">$${fundamentals.marketCap}B</div>
+              </div>
+            ` : ''}
+            ${fundamentals.peRatio ? `
+              <div>
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">P/E RATIO</div>
+                <div style="font-size:16px;font-weight:700;color:#fff;">${fundamentals.peRatio}</div>
+              </div>
+            ` : ''}
+            ${fundamentals.beta ? `
+              <div>
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">BETA (VOLATILITY)</div>
+                <div style="font-size:16px;font-weight:700;color:${parseFloat(fundamentals.beta) > 1.2 ? '#f59e0b' : '#3b82f6'};">${fundamentals.beta}</div>
+              </div>
+            ` : ''}
+            ${fundamentals.dividendYield ? `
+              <div>
+                <div style="font-size:10px;color:#888;margin-bottom:4px;">DIVIDEND YIELD</div>
+                <div style="font-size:16px;font-weight:700;color:#10b981;">${fundamentals.dividendYield}%</div>
+              </div>
+            ` : ''}
           </div>
-          <div>
-            <div style="font-size:10px;color:#666;margin-bottom:4px;">LOW</div>
-            <div style="font-size:14px;font-weight:600;color:#ef4444;">$${low}</div>
+          ${fundamentals.week52High && fundamentals.week52Low ? `
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.05);">
+              <div style="font-size:10px;color:#888;margin-bottom:8px;">52-WEEK RANGE</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:14px;font-weight:600;color:#ef4444;">$${fundamentals.week52Low}</span>
+                <span style="font-size:14px;font-weight:600;color:#10b981;">$${fundamentals.week52High}</span>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;background:linear-gradient(90deg,#ef4444,#f59e0b,#10b981);width:100%;"></div>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : '';
+
+    // Analyst ratings card
+    const analystCard = (analystData.buy + analystData.hold + analystData.sell > 0) ? `
+      <div style="margin:16px 0;">
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">🎯 Analyst Consensus</div>
+        <div style="background:linear-gradient(135deg,rgba(15,15,15,0.95),rgba(25,25,35,0.95));border:1px solid rgba(251,191,36,0.2);border-radius:12px;padding:16px;">
+          <div style="display:flex;gap:12px;margin-bottom:16px;">
+            <div style="flex:1;text-align:center;padding:12px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);border-radius:8px;">
+              <div style="font-size:24px;font-weight:700;color:#10b981;">${analystData.buy}</div>
+              <div style="font-size:10px;color:#888;text-transform:uppercase;">Buy</div>
+            </div>
+            <div style="flex:1;text-align:center;padding:12px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);border-radius:8px;">
+              <div style="font-size:24px;font-weight:700;color:#fbbf24;">${analystData.hold}</div>
+              <div style="font-size:10px;color:#888;text-transform:uppercase;">Hold</div>
+            </div>
+            <div style="flex:1;text-align:center;padding:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;">
+              <div style="font-size:24px;font-weight:700;color:#ef4444;">${analystData.sell}</div>
+              <div style="font-size:10px;color:#888;text-transform:uppercase;">Sell</div>
+            </div>
           </div>
-          <div>
-            <div style="font-size:10px;color:#666;margin-bottom:4px;">VOLUME</div>
-            <div style="font-size:14px;font-weight:600;color:#3b82f6;">${volume}</div>
-          </div>
+          ${analystData.targetMean ? `
+            <div style="padding-top:12px;border-top:1px solid rgba(255,255,255,0.05);">
+              <div style="font-size:10px;color:#888;margin-bottom:8px;">ANALYST PRICE TARGETS</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <div>
+                  <div style="font-size:9px;color:#666;">LOW</div>
+                  <div style="font-size:14px;font-weight:600;color:#ef4444;">$${analystData.targetLow}</div>
+                </div>
+                <div style="text-align:center;">
+                  <div style="font-size:9px;color:#666;">AVERAGE</div>
+                  <div style="font-size:16px;font-weight:700;color:#fbbf24;">$${analystData.targetMean}</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:9px;color:#666;">HIGH</div>
+                  <div style="font-size:14px;font-weight:600;color:#10b981;">$${analystData.targetHigh}</div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
         </div>
       </div>
     ` : '';
@@ -714,9 +910,6 @@ RULES:
             <div style="font-size:11px;color:#999;margin-top:2px;">${score}/100</div>
           </div>
         </div>
-        ${technicals.length ? `<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
-          ${technicals.map(t => `<span style="font-size:11px;padding:4px 10px;background:rgba(${t.color === '#10b981' ? '16,185,129' : t.color === '#ef4444' ? '239,68,68' : '245,158,11'},0.15);border:1px solid rgba(${t.color === '#10b981' ? '16,185,129' : t.color === '#ef4444' ? '239,68,68' : '245,158,11'},0.3);border-radius:20px;color:${t.color};">📊 ${t.text}</span>`).join('')}
-        </div>` : ''}
       </div>
     `;
 
@@ -814,10 +1007,10 @@ RULES:
       </div>
     `;
 
-    const fullResponse = headerBadge + priceCard + signalsSection + newsSection + formattedAnalysis + actionPanel + footerDisclaimer;
+    const fullResponse = headerBadge + performanceCard + metricsCard + analystCard + signalsSection + newsSection + formattedAnalysis + actionPanel + footerDisclaimer;
 
     res.json({ result: fullResponse });
-    
+
   } catch (err) {
     console.error("❌ Analysis error:", err.message);
     res.json({ 
@@ -840,7 +1033,8 @@ app.listen(PORT, () => {
   console.log(`\n📡 API Status:`);
   console.log(`   ${OPENROUTER_KEY ? '✓' : '✗'} OpenRouter (AI Analysis)`);
   console.log(`   ${NEWS_KEY ? '✓' : '✗'} NewsAPI (Headlines)`);
-  console.log(`   ${PRICE_KEY ? '✓' : '✗'} Alpha Vantage (Price Data)`);
+  console.log(`   ${PRICE_KEY ? '✓' : '✗'} Alpha Vantage (Fundamentals & Performance)`);
+  console.log(`   ${FINNHUB_KEY ? '✓' : '✗'} Finnhub (Analyst Ratings & Targets)`);
   console.log(`\n🔒 Legal Framework: Active`);
   console.log(`   ✓ Educational framing`);
   console.log(`   ✓ Non-prescriptive language`);
