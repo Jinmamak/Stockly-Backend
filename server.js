@@ -741,15 +741,15 @@ RULES:
     // Tab navigation
     const tabNav = `
       <div style="display:flex;gap:8px;padding:16px 16px 0 16px;background:rgba(15,15,15,0.95);">
-        <button onclick="switchTab('simplified')" id="tab-simplified" style="flex:1;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s;">
+        <button onclick="window.stocklySwitchTab('simplified')" id="tab-simplified" style="flex:1;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s;">
           📋 Simplified
         </button>
-        <button onclick="switchTab('detailed')" id="tab-detailed" style="flex:1;padding:12px;background:rgba(255,255,255,0.05);color:#888;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s;">
+        <button onclick="window.stocklySwitchTab('detailed')" id="tab-detailed" style="flex:1;padding:12px;background:rgba(255,255,255,0.05);color:#888;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s;">
           📊 Detailed
         </button>
       </div>
       <script>
-        function switchTab(tab) {
+        window.stocklySwitchTab = function(tab) {
           const simplifiedTab = document.getElementById('tab-simplified');
           const detailedTab = document.getElementById('tab-detailed');
           const simplifiedContent = document.getElementById('content-simplified');
