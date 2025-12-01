@@ -749,30 +749,32 @@ RULES:
         </button>
       </div>
       <script>
-        (function() {
+        setTimeout(function() {
           const simplifiedTab = document.getElementById('tab-simplified');
           const detailedTab = document.getElementById('tab-detailed');
           const simplifiedContent = document.getElementById('content-simplified');
           const detailedContent = document.getElementById('content-detailed');
 
-          simplifiedTab.addEventListener('click', function() {
-            simplifiedTab.style.background = 'linear-gradient(135deg,#667eea,#764ba2)';
-            simplifiedTab.style.color = 'white';
-            detailedTab.style.background = 'rgba(255,255,255,0.05)';
-            detailedTab.style.color = '#888';
-            simplifiedContent.style.display = 'block';
-            detailedContent.style.display = 'none';
-          });
+          if (simplifiedTab && detailedTab && simplifiedContent && detailedContent) {
+            simplifiedTab.addEventListener('click', function() {
+              simplifiedTab.style.background = 'linear-gradient(135deg,#667eea,#764ba2)';
+              simplifiedTab.style.color = 'white';
+              detailedTab.style.background = 'rgba(255,255,255,0.05)';
+              detailedTab.style.color = '#888';
+              simplifiedContent.style.display = 'block';
+              detailedContent.style.display = 'none';
+            });
 
-          detailedTab.addEventListener('click', function() {
-            simplifiedTab.style.background = 'rgba(255,255,255,0.05)';
-            simplifiedTab.style.color = '#888';
-            detailedTab.style.background = 'linear-gradient(135deg,#667eea,#764ba2)';
-            detailedTab.style.color = 'white';
-            simplifiedContent.style.display = 'none';
-            detailedContent.style.display = 'block';
-          });
-        })();
+            detailedTab.addEventListener('click', function() {
+              simplifiedTab.style.background = 'rgba(255,255,255,0.05)';
+              simplifiedTab.style.color = '#888';
+              detailedTab.style.background = 'linear-gradient(135deg,#667eea,#764ba2)';
+              detailedTab.style.color = 'white';
+              simplifiedContent.style.display = 'none';
+              detailedContent.style.display = 'block';
+            });
+          }
+        }, 100);
       </script>
     `;
 
