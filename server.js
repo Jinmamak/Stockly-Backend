@@ -957,10 +957,46 @@ CRITICAL RULES:
 
         ${news.length ? `
           <div style="padding:0 16px 16px 16px;">
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📰 Recent News (${news.length})</div>
-            <div style="font-size:12px;color:#aaa;margin-bottom:8px;">Sentiment: <span style="color:${sentiment.color};font-weight:600;">${sentiment.label}</span></div>
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📰 What's Happening (Last 3 Days)</div>
+            ${news.map(n => `
+              <div style="padding:10px;margin-bottom:6px;background:rgba(46,185,224,0.05);border-left:3px solid #2eb9e0;border-radius:6px;">
+                <div style="font-size:12px;line-height:1.5;color:#d0d0d0;margin-bottom:4px;">${n.title}</div>
+                <div style="font-size:10px;color:#666;">${n.source} • ${n.time}h ago</div>
+              </div>
+            `).join('')}
+            <div style="margin-top:12px;padding:8px;background:rgba(${sentiment.color === '#10b981' ? '16,185,129' : sentiment.color === '#ef4444' ? '239,68,68' : '107,114,128'},0.1);border-radius:6px;">
+              <span style="font-size:11px;color:#888;">Overall Tone: </span>
+              <span style="color:${sentiment.color};font-weight:600;font-size:12px;">${sentiment.label === 'Positive' ? '👍 Mostly Positive' : sentiment.label === 'Negative' ? '👎 Mostly Negative' : '🤷 Mixed News'}</span>
+            </div>
           </div>
-        ` : ''}
+        ` : `
+          <div style="padding:0 16px 16px 16px;">
+            <div style="padding:12px;background:rgba(102,126,234,0.08);border-radius:8px;text-align:center;">
+              <div style="font-size:13px;color:#888;margin-bottom:8px;">📭 No major news in the last 3 days</div>
+              <div style="font-size:11px;color:#666;">This could mean the company is in a quiet period, or news outlets aren't covering it right now.</div>
+            </div>
+          </div>
+        `}
+
+        <div style="padding:0 16px 16px 16px;">
+          <div style="padding:14px;background:linear-gradient(135deg,rgba(102,126,234,0.1),rgba(118,75,162,0.1));border:1px solid rgba(102,126,234,0.25);border-radius:10px;">
+            <div style="font-size:11px;color:#667eea;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">💡 Before You Decide</div>
+            <div style="font-size:12px;line-height:1.6;color:#d0d0d0;margin-bottom:8px;">
+              This is educational info only. Here's what to research next:
+            </div>
+            <div style="display:grid;gap:6px;font-size:11px;">
+              <div style="padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;color:#c0c0c0;">
+                • Read full news articles to understand the context
+              </div>
+              <div style="padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;color:#c0c0c0;">
+                • Compare with competitors in the same industry
+              </div>
+              <div style="padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;color:#c0c0c0;">
+                • Check the "Detailed" tab for more in-depth analysis
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
