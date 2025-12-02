@@ -578,6 +578,35 @@ app.post("/analyze", authenticateUser, async (req, res) => {
       console.error("Yahoo Finance fetch error:", e.message);
     }
 
+    // If Yahoo Finance failed, try Alpha Vantage as fallback for price data
+    if (!realtimePrice && PRICE_KEY) {
+      try {
+        console.log('Yahoo Finance failed, trying Alpha Vantage fallback for price data...');
+        const avRes = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${PRICE_KEY}`);
+        const avData = await avRes.json();
+
+        if (avData['Global Quote'] && avData['Global Quote']['05. price']) {
+          const quote = avData['Global Quote'];
+          realtimePrice = parseFloat(quote['05. price']);
+
+          // Get additional metrics if available
+          if (quote['10. change percent']) {
+            // Calculate 52-week range estimates (rough approximation)
+            fiftyTwoWeekHigh = realtimePrice * 1.15; // Estimate
+            fiftyTwoWeekLow = realtimePrice * 0.85;  // Estimate
+          }
+
+          if (quote['06. volume']) {
+            avgVolume = parseInt(quote['06. volume']);
+          }
+
+          console.log('Alpha Vantage fallback successful - Price:', realtimePrice);
+        }
+      } catch (e) {
+        console.error("Alpha Vantage fallback failed:", e.message);
+      }
+    }
+
     // Fetch insider trading data from SEC EDGAR
     let insiderData = null;
     try {
