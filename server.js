@@ -1057,32 +1057,40 @@ CRITICAL RULES:
 
         ${realtimePrice ? `
           <div style="margin:16px;">
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">💹 Live Market Data</div>
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📊 Key Metrics</div>
             <div style="background:linear-gradient(135deg,rgba(15,15,15,0.95),rgba(25,25,35,0.95));border:1px solid rgba(249,115,22,0.3);border-radius:12px;padding:16px;">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                 <div>
-                  <div style="font-size:10px;color:#888;margin-bottom:4px;">Current Price</div>
-                  <div style="font-size:18px;font-weight:700;color:#fff;">$${realtimePrice.toFixed(2)}</div>
+                  <div style="font-size:10px;color:#888;margin-bottom:4px;">Avg Daily Volume</div>
+                  <div style="font-size:18px;font-weight:700;color:#fff;">${avgVolume ? `${(avgVolume / 1e6).toFixed(2)}M` : 'N/A'}</div>
+                  <div style="font-size:9px;color:#666;margin-top:2px;">Trading Liquidity</div>
                 </div>
                 <div>
                   <div style="font-size:10px;color:#888;margin-bottom:4px;">Market Cap</div>
                   <div style="font-size:18px;font-weight:700;color:#fff;">${marketCap ? `$${(marketCap / 1e9).toFixed(2)}B` : 'N/A'}</div>
+                  <div style="font-size:9px;color:#666;margin-top:2px;">Company Size</div>
                 </div>
                 <div>
                   <div style="font-size:10px;color:#888;margin-bottom:4px;">P/E Ratio</div>
                   <div style="font-size:18px;font-weight:700;color:#fff;">${peRatio ? peRatio.toFixed(2) : 'N/A'}</div>
+                  <div style="font-size:9px;color:#666;margin-top:2px;">Valuation</div>
                 </div>
                 <div>
                   <div style="font-size:10px;color:#888;margin-bottom:4px;">52W Range</div>
                   <div style="font-size:12px;font-weight:600;color:#fff;">${fiftyTwoWeekLow ? `$${fiftyTwoWeekLow.toFixed(2)}` : 'N/A'} - ${fiftyTwoWeekHigh ? `$${fiftyTwoWeekHigh.toFixed(2)}` : 'N/A'}</div>
+                  <div style="font-size:9px;color:#666;margin-top:2px;">Historical Range</div>
                 </div>
               </div>
               ${earningsDate ? `
                 <div style="padding:10px;background:rgba(102,126,234,0.1);border-radius:6px;margin-top:8px;">
-                  <span style="font-size:11px;color:#888;">Next Earnings: </span>
+                  <span style="font-size:11px;color:#888;">📅 Next Earnings: </span>
                   <span style="font-size:12px;color:#667eea;font-weight:600;">${earningsDate}</span>
                 </div>
               ` : ''}
+              <div style="padding:8px;background:rgba(249,115,22,0.08);border-radius:6px;margin-top:8px;">
+                <div style="font-size:11px;color:#f97316;">💡 Educational Note:</div>
+                <div style="font-size:12px;color:#d0d0d0;margin-top:4px;">High volume = easier to buy/sell. Low P/E might mean undervalued or slow growth. Always compare with industry peers.</div>
+              </div>
             </div>
           </div>
         ` : ''}
@@ -1224,12 +1232,12 @@ CRITICAL RULES:
                 <div style="font-size:12px;color:#d0d0d0;margin-bottom:8px;">Get notified when ${ticker} hits your target price:</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                   <div>
-                    <label style="font-size:10px;color:#888;display:block;margin-bottom:4px;">Alert Above</label>
-                    <input type="number" id="alert-above-${ticker}" placeholder="$${(realtimePrice * 1.05).toFixed(2)}" style="width:100%;padding:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(34,197,94,0.3);border-radius:6px;color:#fff;font-size:13px;" />
+                    <label style="font-size:10px;color:#888;display:block;margin-bottom:4px;">Alert Above Price</label>
+                    <input type="number" id="alert-above-${ticker}" placeholder="e.g. 150.00" style="width:100%;padding:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(34,197,94,0.3);border-radius:6px;color:#fff;font-size:13px;" />
                   </div>
                   <div>
-                    <label style="font-size:10px;color:#888;display:block;margin-bottom:4px;">Alert Below</label>
-                    <input type="number" id="alert-below-${ticker}" placeholder="$${(realtimePrice * 0.95).toFixed(2)}" style="width:100%;padding:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(239,68,68,0.3);border-radius:6px;color:#fff;font-size:13px;" />
+                    <label style="font-size:10px;color:#888;display:block;margin-bottom:4px;">Alert Below Price</label>
+                    <input type="number" id="alert-below-${ticker}" placeholder="e.g. 100.00" style="width:100%;padding:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(239,68,68,0.3);border-radius:6px;color:#fff;font-size:13px;" />
                   </div>
                 </div>
                 <button id="set-alert-${ticker}" onclick="
